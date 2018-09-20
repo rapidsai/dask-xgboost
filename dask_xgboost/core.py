@@ -4,6 +4,8 @@ from threading import Thread
 
 import numpy as np
 import pandas as pd
+import pygdf as gd
+from libgdf_cffi import libgdf
 from toolz import first, assoc
 from tornado import gen
 
@@ -18,13 +20,13 @@ from dask import delayed
 from dask.distributed import wait, default_client
 import dask.dataframe as dd
 import dask.array as da
+import dask_gdf as dgd
 
 import xgboost as xgb
 
 from .tracker import RabitTracker
 
 logger = logging.getLogger(__name__)
-
 
 def parse_host_port(address):
     if '://' in address:
@@ -53,6 +55,8 @@ def concat(L):
         return np.concatenate(L, axis=0)
     elif isinstance(L[0], (pd.DataFrame, pd.Series)):
         return pd.concat(L, axis=0)
+    elif isinstance(L[0], (gd.DataFrame, gd.Series)):
+        return gd.concat(L)
     elif ss and isinstance(L[0], ss.spmatrix):
         return ss.vstack(L, format='csr')
     elif sparse and isinstance(L[0], sparse.SparseArray):
@@ -71,7 +75,7 @@ def train_part(env, param, list_of_parts, dmatrix_kwargs=None, **kwargs):
 
     Returns
     -------
-    model if rank zero, None otherwise
+    models found by each worker
     """
     data, labels = zip(*list_of_parts)  # Prepare data
     data = concat(data)                 # Concatenate many parts into one
@@ -88,7 +92,6 @@ def train_part(env, param, list_of_parts, dmatrix_kwargs=None, **kwargs):
         logger.info("Starting Rabit, Rank %d", xgb.rabit.get_rank())
 
         bst = xgb.train(param, dtrain, **kwargs)
-
         if xgb.rabit.get_rank() == 0:  # Only return from one worker
             result = bst
         else:
@@ -192,10 +195,13 @@ def train(client, params, data, labels, dmatrix_kwargs={}, **kwargs):
 
 
 def _predict_part(part, model=None):
+    #print('called _predict_part')
     xgb.rabit.init()
+    #print(type(part))
+    #print(part.columns)
     try:
         dm = xgb.DMatrix(part)
-        result = model.predict(dm)
+        result = model.predict(dm, validate_features=False)
     finally:
         xgb.rabit.finalize()
 
@@ -204,6 +210,11 @@ def _predict_part(part, model=None):
             result = pd.DataFrame(result, index=part.index)
         else:
             result = pd.Series(result, index=part.index, name='predictions')
+    if isinstance(part, gd.DataFrame):
+        if model.attr("num_class"):
+            result = gd.DataFrame(result, index=part.index)
+        else:
+            result = gd.Series(result, index=part.index)
     return result
 
 
@@ -236,6 +247,10 @@ def predict(client, model, data):
     if isinstance(data, dd._Frame):
         result = data.map_partitions(_predict_part, model=model)
         result = result.values
+    elif isinstance(data, (dgd.DataFrame, dgd.Series)):
+        result = data.map_partitions(_predict_part, model=model)
+        #result = result.values
+        result = result.to_dask_dataframe().values
     elif isinstance(data, da.Array):
         num_class = model.attr("num_class") or 2
         num_class = int(num_class)
