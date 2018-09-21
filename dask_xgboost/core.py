@@ -195,10 +195,7 @@ def train(client, params, data, labels, dmatrix_kwargs={}, **kwargs):
 
 
 def _predict_part(part, model=None):
-    #print('called _predict_part')
     xgb.rabit.init()
-    #print(type(part))
-    #print(part.columns)
     try:
         dm = xgb.DMatrix(part)
         result = model.predict(dm, validate_features=False)
@@ -247,10 +244,8 @@ def predict(client, model, data):
     if isinstance(data, dd._Frame):
         result = data.map_partitions(_predict_part, model=model)
         result = result.values
-    elif isinstance(data, (dgd.DataFrame, dgd.Series)):
+    elif isinstance(data, dgd.core._Frame):
         result = data.map_partitions(_predict_part, model=model)
-        #result = result.values
-        result = result.to_dask_dataframe().values
     elif isinstance(data, da.Array):
         num_class = model.attr("num_class") or 2
         num_class = int(num_class)
