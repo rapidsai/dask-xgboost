@@ -92,9 +92,8 @@ def train_part(env, param, list_of_parts, dmatrix_kwargs=None, **kwargs):
         logger.info("Starting Rabit, Rank %d", xgb.rabit.get_rank())
 
         bst = xgb.train(param, dtrain, **kwargs)
-        if xgb.rabit.get_rank() == 0:  # Only return from one worker
-            result = bst
-        else:
+        result = bst
+        if xgb.rabit.get_rank() > 0 and not param.get('dask_all_models', False):
             result = None
     finally:
         xgb.rabit.finalize()
@@ -154,8 +153,10 @@ def _train(client, params, data, labels, dmatrix_kwargs={}, **kwargs):
 
     # Get the results, only one will be non-None
     results = yield client._gather(futures)
-    result = [v for v in results if v][0]
-    num_class = params.get("num_class")
+    result = [v for v in results if v]
+    if not params.get('dask_all_models', False):
+        result = result[0]
+    num_class = params.get('num_class')
     if num_class:
         result.set_attr(num_class=str(num_class))
     raise gen.Return(result)
