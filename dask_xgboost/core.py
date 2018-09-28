@@ -83,7 +83,7 @@ def train_part(env, param, list_of_parts, dmatrix_kwargs=None, **kwargs):
     if dmatrix_kwargs is None:
         dmatrix_kwargs = {}
 
-    dmatrix_kwargs["feature_names"] = getattr(data, 'columns', None)
+    #dmatrix_kwargs["feature_names"] = getattr(data, 'columns', None)
     dtrain = xgb.DMatrix(data, labels, **dmatrix_kwargs)
 
     args = [('%s=%s' % item).encode() for item in env.items()]
@@ -199,7 +199,7 @@ def _predict_part(part, model=None):
     xgb.rabit.init()
     try:
         dm = xgb.DMatrix(part)
-        result = model.predict(dm, validate_features=False)
+        result = model.predict(dm)
     finally:
         xgb.rabit.finalize()
 
