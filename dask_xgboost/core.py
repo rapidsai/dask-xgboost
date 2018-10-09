@@ -2,6 +2,7 @@ from collections import defaultdict
 import logging
 from threading import Thread
 
+import time
 import numpy as np
 import pandas as pd
 import pygdf as gd
@@ -17,6 +18,14 @@ except ImportError:
     ss = False
 
 from dask import delayed
+from dask.delayed import Delayed, delayed
+from dask.base import tokenize, normalize_token, DaskMethodsMixin
+from dask.utils import funcname, M, OperatorMethodMixin
+from dask.context import _globals
+from dask.core import flatten
+from dask.threaded import get as threaded_get
+from dask.optimization import cull, fuse
+from toolz import merge, partition_all
 from dask.distributed import wait, default_client
 import dask.dataframe as dd
 import dask.array as da
@@ -27,6 +36,7 @@ import xgboost as xgb
 from .tracker import RabitTracker
 
 logger = logging.getLogger(__name__)
+
 
 def parse_host_port(address):
     if '://' in address:
@@ -57,6 +67,8 @@ def concat(L):
         return pd.concat(L, axis=0)
     elif isinstance(L[0], (gd.DataFrame, gd.Series)):
         return gd.concat(L)
+    elif isinstance(L[0], xgb.DMatrix):
+        return L
     elif ss and isinstance(L[0], ss.spmatrix):
         return ss.vstack(L, format='csr')
     elif sparse and isinstance(L[0], sparse.SparseArray):
@@ -77,14 +89,23 @@ def train_part(env, param, list_of_parts, dmatrix_kwargs=None, **kwargs):
     -------
     models found by each worker
     """
-    data, labels = zip(*list_of_parts)  # Prepare data
-    data = concat(data)                 # Concatenate many parts into one
-    labels = concat(labels)
-    if dmatrix_kwargs is None:
-        dmatrix_kwargs = {}
 
-    #dmatrix_kwargs["feature_names"] = getattr(data, 'columns', None)
-    dtrain = xgb.DMatrix(data, labels, **dmatrix_kwargs)
+    data, labels = zip(*list_of_parts)      # Prepare data
+
+    if labels[0] is not None:
+        data = concat(data)                 # Concatenate many parts into one
+        labels = concat(labels)
+        #dmatrix_kwargs["feature_names"] = getattr(data, 'columns', None)
+        if dmatrix_kwargs is None:
+            dmatrix_kwargs = {}
+        dtrain = xgb.DMatrix(data, labels, **dmatrix_kwargs)
+
+    elif labels[0] is None and isinstance(data[0], xgb.DMatrix):
+        dtrain = data[0]
+        #dmatrix_kwargs["feature_names"] = getattr(data, 'columns', None)
+        if dmatrix_kwargs is None:
+            dmatrix_kwargs = {}
+
 
     args = [('%s=%s' % item).encode() for item in env.items()]
     xgb.rabit.init(args)
@@ -110,8 +131,18 @@ def _train(client, params, data, labels, dmatrix_kwargs={}, **kwargs):
     train
     """
     # Break apart Dask.array/dataframe into chunks/parts
-    data_parts = data.to_delayed()
-    label_parts = labels.to_delayed()
+    data_parts = None
+    label_parts = None
+    if isinstance(data, (list, tuple)):
+        if isinstance(data[0], Delayed):
+            for data_part in data:
+                if not isinstance(data_part, Delayed):
+                    raise AssertionError("note all data is delayed")
+            data_parts = data
+    else:
+        data_parts = data.to_delayed()
+    if labels is not None:
+        label_parts = labels.to_delayed()
     if isinstance(data_parts, np.ndarray):
         assert data_parts.shape[1] == 1
         data_parts = data_parts.flatten().tolist()
@@ -120,9 +151,14 @@ def _train(client, params, data, labels, dmatrix_kwargs={}, **kwargs):
         label_parts = label_parts.flatten().tolist()
 
     # Arrange parts into pairs.  This enforces co-locality
-    parts = list(map(delayed, zip(data_parts, label_parts)))
-    parts = client.compute(parts)  # Start computation in the background
-    yield wait(parts)
+    if labels is not None:
+        parts = list(map(delayed, zip(data_parts, label_parts)))
+        parts = client.compute(parts)  # Start computation in the background
+        yield wait(parts)
+    else:
+        parts = list(map(delayed, zip(data_parts, [None]*len(data_parts))))
+        parts = client.compute(parts)
+        yield wait(parts)
 
     for part in parts:
         if part.status == 'error':
