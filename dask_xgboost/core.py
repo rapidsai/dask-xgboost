@@ -5,7 +5,7 @@ from threading import Thread
 import time
 import numpy as np
 import pandas as pd
-import pygdf as gd
+import cudf as gd
 from libgdf_cffi import libgdf
 from toolz import first, assoc
 from tornado import gen
@@ -29,7 +29,7 @@ from toolz import merge, partition_all
 from dask.distributed import wait, default_client
 import dask.dataframe as dd
 import dask.array as da
-import dask_gdf as dgd
+import dask_cudf as dgd
 
 import xgboost as xgb
 
