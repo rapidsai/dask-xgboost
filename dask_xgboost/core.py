@@ -256,6 +256,19 @@ def predict(client, model, data):
     return result
 
 
+def _xgb_regressor_fit(obj, X, y):
+    client = default_client()
+    xgb_options = obj.get_xgb_params()
+    obj._Booster = train(client, xgb_options, X, y,
+                          num_boost_round=obj.get_num_boosting_rounds())
+    return obj
+
+
+def _xgb_regressor_predict(obj, X):
+    client = default_client()
+    return predict(client, obj._Booster, X)
+
+
 class XGBRegressor(xgb.XGBRegressor):
 
     def fit(self, X, y=None):
@@ -268,7 +281,7 @@ class XGBRegressor(xgb.XGBRegressor):
 
         Returns
         -------
-        self : the fitted Regressor
+        self : the fitted XGBRegressor
 
         Notes
         -----
@@ -276,15 +289,36 @@ class XGBRegressor(xgb.XGBRegressor):
         ``eval_metric``, ``early_stopping_rounds`` and ``verbose`` fit
         kwargs.
         """
-        client = default_client()
-        xgb_options = self.get_xgb_params()
-        self._Booster = train(client, xgb_options, X, y,
-                              num_boost_round=self.n_estimators)
-        return self
+        return _xgb_regressor_fit(self, X, y)
 
     def predict(self, X):
-        client = default_client()
-        return predict(client, self._Booster, X)
+        return _xgb_regressor_predict(self, X)
+
+
+class XGBRFRegressor(xgb.XGBRFRegressor):
+
+    def fit(self, X, y=None):
+        """Fit the random forest model
+
+        Parameters
+        ----------
+        X : array-like [n_samples, n_features]
+        y : array-like
+
+        Returns
+        -------
+        self : the fitted XGBRFRegressor
+
+        Notes
+        -----
+        This differs from the XGBoost version not supporting the ``eval_set``,
+        ``eval_metric``, ``early_stopping_rounds`` and ``verbose`` fit
+        kwargs.
+        """
+        return _xgb_regressor_fit(self, X, y)
+
+    def predict(self, X):
+        return _xgb_regressor_predict(self, X)
 
 
 def _xgb_classifier_fit(obj, X, y, classes):
