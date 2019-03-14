@@ -304,7 +304,7 @@ def predict(client, model, data):
 
 
 class DaskRegressionMixin:
-    def fit(self, X, y):
+    def fit(self, X, y=None):
         """Fit the gradient boosting model
 
         Parameters
@@ -347,7 +347,7 @@ class XGBRFRegressor(DaskRegressionMixin, xgb.XGBRFRegressor):
 
 class DaskClassificationMixin:
 
-    def fit(self, X, y, classes):
+    def fit(self, X, y=None, classes=None):
         """Fit a gradient boosting classifier
 
         Parameters
@@ -420,7 +420,7 @@ class DaskClassificationMixin:
         return cidx
 
 
-    def predict_proba(self, data, ntree_limit):
+    def predict_proba(self, data, ntree_limit=None):
         client = default_client()
         if ntree_limit is not None:
             raise NotImplementedError("'ntree_limit' is not currently "
