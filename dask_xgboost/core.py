@@ -303,8 +303,9 @@ def predict(client, model, data):
     return result
 
 
-class DaskRegressionMixin:
-    def fit(self, X, y):
+class XGBRegressor(xgb.XGBRegressor):
+
+    def fit(self, X, y=None):
         """Fit the gradient boosting model
 
         Parameters
@@ -314,7 +315,7 @@ class DaskRegressionMixin:
 
         Returns
         -------
-        self : the fitted XGBRegressor
+        self : the fitted Regressor
 
         Notes
         -----
@@ -322,32 +323,20 @@ class DaskRegressionMixin:
         ``eval_metric``, ``early_stopping_rounds`` and ``verbose`` fit
         kwargs.
         """
-
         client = default_client()
         xgb_options = self.get_xgb_params()
         self._Booster = train(client, xgb_options, X, y,
-                              num_boost_round=self.get_num_boosting_rounds())
+                              num_boost_round=self.n_estimators)
         return self
-
 
     def predict(self, X):
         client = default_client()
         return predict(client, self._Booster, X)
 
 
-class XGBRegressor(DaskRegressionMixin, xgb.XGBRegressor):
+class XGBClassifier(xgb.XGBClassifier):
 
-    pass
-
-
-class XGBRFRegressor(DaskRegressionMixin, xgb.XGBRFRegressor):
-
-    pass
-
-
-class DaskClassificationMixin:
-
-    def fit(self, X, y, classes):
+    def fit(self, X, y=None, classes=None):
         """Fit a gradient boosting classifier
 
         Parameters
@@ -390,25 +379,24 @@ class DaskClassificationMixin:
         xgb_options = self.get_xgb_params()
 
         if self.n_classes_ > 2:
-            # xgboost just ignores the user-provided selfective
+            # xgboost just ignores the user-provided objective
             # We only overwrite if it's the default...
-            if xgb_options['selfective'] == "binary:logistic":
-                xgb_options["selfective"] = "multi:softprob"
+            if xgb_options['objective'] == "binary:logistic":
+                xgb_options["objective"] = "multi:softprob"
 
             xgb_options.setdefault('num_class', self.n_classes_)
 
-        # xgboost sets this to self.selfective, which I think is wrong
+        # xgboost sets this to self.objective, which I think is wrong
         # hyper-parameters should not be updated during fit.
-        self.selfective = xgb_options['selfective']
+        self.objective = xgb_options['objective']
 
         # TODO: auto label-encode y
         # that will require a dependency on dask-ml
         # TODO: sample weight
 
         self._Booster = train(client, xgb_options, X, y,
-                              num_boost_round=self.get_num_boosting_rounds())
+                              num_boost_round=self.n_estimators)
         return self
-
 
     def predict(self, X):
         client = default_client()
@@ -419,21 +407,10 @@ class DaskClassificationMixin:
             cidx = (class_probs > 0).astype(np.int64)
         return cidx
 
-
-    def predict_proba(self, data, ntree_limit):
+    def predict_proba(self, data, ntree_limit=None):
         client = default_client()
         if ntree_limit is not None:
             raise NotImplementedError("'ntree_limit' is not currently "
                                       "supported.")
         class_probs = predict(client, self._Booster, data)
         return class_probs
-
-
-class XGBClassifier(DaskClassificationMixin, xgb.XGBClassifier):
-
-    pass
-
-
-class XGBRFClassifier(DaskClassificationMixin, xgb.XGBRFClassifier):
-
-    pass
