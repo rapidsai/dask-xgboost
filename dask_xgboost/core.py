@@ -287,6 +287,62 @@ class XGBRegressor(xgb.XGBRegressor):
         return predict(client, self._Booster, X)
 
 
+def _xgb_classifier_fit(obj, X, y, classes):
+    client = default_client()
+
+    if classes is None:
+        if isinstance(y, da.Array):
+            classes = da.unique(y)
+        else:
+            classes = y.unique()
+        classes = classes.compute()
+    else:
+        classes = np.asarray(classes)
+    obj.classes_ = classes
+    obj.n_classes_ = len(obj.classes_)
+
+    xgb_options = obj.get_xgb_params()
+
+    if obj.n_classes_ > 2:
+        # xgboost just ignores the user-provided objective
+        # We only overwrite if it's the default...
+        if xgb_options['objective'] == "binary:logistic":
+            xgb_options["objective"] = "multi:softprob"
+
+        xgb_options.setdefault('num_class', obj.n_classes_)
+
+    # xgboost sets this to obj.objective, which I think is wrong
+    # hyper-parameters should not be updated during fit.
+    obj.objective = xgb_options['objective']
+
+    # TODO: auto label-encode y
+    # that will require a dependency on dask-ml
+    # TODO: sample weight
+
+    obj._Booster = train(client, xgb_options, X, y,
+                          num_boost_round=obj.get_num_boosting_rounds())
+    return obj
+
+
+def _xgb_classifier_predict(obj, X):
+    client = default_client()
+    class_probs = predict(client, obj._Booster, X)
+    if class_probs.ndim > 1:
+        cidx = da.argmax(class_probs, axis=1)
+    else:
+        cidx = (class_probs > 0).astype(np.int64)
+    return cidx
+
+
+def _xgb_classifier_predict_proba(obj, data, ntree_limit):
+    client = default_client()
+    if ntree_limit is not None:
+        raise NotImplementedError("'ntree_limit' is not currently "
+                                  "supported.")
+    class_probs = predict(client, obj._Booster, data)
+    return class_probs
+
+
 class XGBClassifier(xgb.XGBClassifier):
 
     def fit(self, X, y=None, classes=None):
@@ -316,54 +372,48 @@ class XGBClassifier(xgb.XGBClassifier):
         2. The labels are not automatically label-encoded
         3. The ``classes_`` and ``n_classes_`` attributes are not learned
         """
-        client = default_client()
-
-        if classes is None:
-            if isinstance(y, da.Array):
-                classes = da.unique(y)
-            else:
-                classes = y.unique()
-            classes = classes.compute()
-        else:
-            classes = np.asarray(classes)
-        self.classes_ = classes
-        self.n_classes_ = len(self.classes_)
-
-        xgb_options = self.get_xgb_params()
-
-        if self.n_classes_ > 2:
-            # xgboost just ignores the user-provided objective
-            # We only overwrite if it's the default...
-            if xgb_options['objective'] == "binary:logistic":
-                xgb_options["objective"] = "multi:softprob"
-
-            xgb_options.setdefault('num_class', self.n_classes_)
-
-        # xgboost sets this to self.objective, which I think is wrong
-        # hyper-parameters should not be updated during fit.
-        self.objective = xgb_options['objective']
-
-        # TODO: auto label-encode y
-        # that will require a dependency on dask-ml
-        # TODO: sample weight
-
-        self._Booster = train(client, xgb_options, X, y,
-                              num_boost_round=self.n_estimators)
-        return self
+        return _xgb_classifier_fit(self, X, y, classes)
 
     def predict(self, X):
-        client = default_client()
-        class_probs = predict(client, self._Booster, X)
-        if class_probs.ndim > 1:
-            cidx = da.argmax(class_probs, axis=1)
-        else:
-            cidx = (class_probs > 0).astype(np.int64)
-        return cidx
+        return _xgb_classifier_predict(self, X)
 
     def predict_proba(self, data, ntree_limit=None):
-        client = default_client()
-        if ntree_limit is not None:
-            raise NotImplementedError("'ntree_limit' is not currently "
-                                      "supported.")
-        class_probs = predict(client, self._Booster, data)
-        return class_probs
+        return _xgb_classifier_predict_proba(self, data, ntree_limit)
+
+
+class XGBRFClassifier(xgb.XGBRFClassifier):
+
+    def fit(self, X, y=None, classes=None):
+        """Fit a random forest classifier
+
+        Parameters
+        ----------
+        X : array-like [n_samples, n_features]
+            Feature Matrix. May be a dask.array or dask.dataframe
+        y : array-like
+            Labels
+        classes : sequence, optional
+            The unique values in `y`. If no specified, this will be
+            eagerly computed from `y` before training.
+
+        Returns
+        -------
+        self : XGBRFClassifier
+
+        Notes
+        -----
+        This differs from the XGBoost version in three ways
+
+        1. The ``sample_weight``, ``eval_set``, ``eval_metric``,
+          ``early_stopping_rounds`` and ``verbose`` fit kwargs are not
+          supported.
+        2. The labels are not automatically label-encoded
+        3. The ``classes_`` and ``n_classes_`` attributes are not learned
+        """
+        return _xgb_classifier_fit(self, X, y, classes)
+
+    def predict(self, X):
+        return _xgb_classifier_predict(self, X)
+
+    def predict_proba(self, data, ntree_limit=None):
+        return _xgb_classifier_predict_proba(self, data, ntree_limit)
