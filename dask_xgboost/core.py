@@ -278,11 +278,11 @@ def predict(client, model, data):
     --------
     train
     """
-    if isinstance(data, dd._Frame):
+    if isinstance(data, dgd.core._Frame):
+        result = data.map_partitions(_predict_part, model=model)
+    elif isinstance(data, dd._Frame):
         result = data.map_partitions(_predict_part, model=model)
         result = result.values
-    elif isinstance(data, dgd.core._Frame):
-        result = data.map_partitions(_predict_part, model=model)
     elif isinstance(data, da.Array):
         num_class = model.attr("num_class") or 2
         num_class = int(num_class)
