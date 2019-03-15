@@ -288,16 +288,6 @@ class DaskRegressionMixin:
         return predict(client, self._Booster, X)
 
 
-class XGBRegressor(DaskRegressionMixin, xgb.XGBRegressor):
-
-    pass
-
-
-class XGBRFRegressor(DaskRegressionMixin, xgb.XGBRFRegressor):
-
-    pass
-
-
 class DaskClassificationMixin:
 
     def fit(self, X, y=None, classes=None):
@@ -382,11 +372,17 @@ class DaskClassificationMixin:
         return class_probs
 
 
-class XGBClassifier(DaskClassificationMixin, xgb.XGBClassifier):
+class XGBRegressor(DaskRegressionMixin, xgb.XGBRegressor):
+    pass
 
+
+class XGBRFRegressor(DaskRegressionMixin, xgb.XGBRFRegressor):
+    pass
+
+
+class XGBClassifier(DaskClassificationMixin, xgb.XGBClassifier):
     pass
 
 
 class XGBRFClassifier(DaskClassificationMixin, xgb.XGBRFClassifier):
-
     pass
