@@ -278,11 +278,11 @@ def predict(client, model, data):
     --------
     train
     """
-    if isinstance(data, dd._Frame):
+    if isinstance(data, dgd.core._Frame):
+        result = data.map_partitions(_predict_part, model=model)
+    elif isinstance(data, dd._Frame):
         result = data.map_partitions(_predict_part, model=model)
         result = result.values
-    elif isinstance(data, dgd.core._Frame):
-        result = data.map_partitions(_predict_part, model=model)
     elif isinstance(data, da.Array):
         num_class = model.attr("num_class") or 2
         num_class = int(num_class)
@@ -303,7 +303,7 @@ def predict(client, model, data):
     return result
 
 
-class XGBRegressor(xgb.XGBRegressor):
+class DaskRegressionMixin:
 
     def fit(self, X, y=None):
         """Fit the gradient boosting model
@@ -326,7 +326,7 @@ class XGBRegressor(xgb.XGBRegressor):
         client = default_client()
         xgb_options = self.get_xgb_params()
         self._Booster = train(client, xgb_options, X, y,
-                              num_boost_round=self.n_estimators)
+                              num_boost_round=self.get_num_boosting_rounds())
         return self
 
     def predict(self, X):
@@ -334,7 +334,7 @@ class XGBRegressor(xgb.XGBRegressor):
         return predict(client, self._Booster, X)
 
 
-class XGBClassifier(xgb.XGBClassifier):
+class DaskClassificationMixin:
 
     def fit(self, X, y=None, classes=None):
         """Fit a gradient boosting classifier
@@ -395,7 +395,7 @@ class XGBClassifier(xgb.XGBClassifier):
         # TODO: sample weight
 
         self._Booster = train(client, xgb_options, X, y,
-                              num_boost_round=self.n_estimators)
+                              num_boost_round=self.get_num_boosting_rounds())
         return self
 
     def predict(self, X):
@@ -414,3 +414,19 @@ class XGBClassifier(xgb.XGBClassifier):
                                       "supported.")
         class_probs = predict(client, self._Booster, data)
         return class_probs
+
+
+class XGBRegressor(DaskRegressionMixin, xgb.XGBRegressor):
+    pass
+
+
+class XGBRFRegressor(DaskRegressionMixin, xgb.XGBRFRegressor):
+    pass
+
+
+class XGBClassifier(DaskClassificationMixin, xgb.XGBClassifier):
+    pass
+
+
+class XGBRFClassifier(DaskClassificationMixin, xgb.XGBRFClassifier):
+    pass
