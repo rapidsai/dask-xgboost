@@ -326,7 +326,7 @@ class DaskRegressionMixin:
         client = default_client()
         xgb_options = self.get_xgb_params()
         self._Booster = train(client, xgb_options, X, y,
-                              num_boost_round=self.n_estimators)
+                              num_boost_round=self.get_num_boosting_rounds())
         return self
 
     def predict(self, X):
@@ -395,7 +395,7 @@ class DaskClassificationMixin:
         # TODO: sample weight
 
         self._Booster = train(client, xgb_options, X, y,
-                              num_boost_round=self.n_estimators)
+                              num_boost_round=self.get_num_boosting_rounds())
         return self
 
     def predict(self, X):
