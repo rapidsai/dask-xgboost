@@ -6,7 +6,6 @@ import time
 import numpy as np
 import pandas as pd
 import cudf as gd
-from libgdf_cffi import libgdf
 from toolz import first, assoc
 from tornado import gen
 
@@ -68,7 +67,7 @@ def concat(L):
     elif isinstance(L[0], (gd.DataFrame, gd.Series)):
         return gd.concat(L)
     elif isinstance(L[0], xgb.DMatrix):
-        return L
+        return
     elif ss and isinstance(L[0], ss.spmatrix):
         return ss.vstack(L, format='csr')
     elif sparse and isinstance(L[0], sparse.SparseArray):
@@ -95,20 +94,24 @@ def train_part(env, param, list_of_parts, dmatrix_kwargs=None, **kwargs):
     if labels[0] is not None:
         data = concat(data)                 # Concatenate many parts into one
         labels = concat(labels)
-        #dmatrix_kwargs["feature_names"] = getattr(data, 'columns', None)
         if dmatrix_kwargs is None:
             dmatrix_kwargs = {}
         dtrain = xgb.DMatrix(data, labels, **dmatrix_kwargs)
 
     elif labels[0] is None and isinstance(data[0], xgb.DMatrix):
         dtrain = data[0]
-        #dmatrix_kwargs["feature_names"] = getattr(data, 'columns', None)
         if dmatrix_kwargs is None:
             dmatrix_kwargs = {}
 
+    elif labels[0] is None and isinstance(data[0], gd):
+        data = concat(data)
+        if dmatrix_kwargs is None:
+            dmatrix_kwargs = {}
+        dtrain = xgb.DMatrix(data, **dmatrix_kwargs)
 
     args = [('%s=%s' % item).encode() for item in env.items()]
     xgb.rabit.init(args)
+
     try:
         logger.info("Starting Rabit, Rank %d", xgb.rabit.get_rank())
 
@@ -118,6 +121,7 @@ def train_part(env, param, list_of_parts, dmatrix_kwargs=None, **kwargs):
             result = None
     finally:
         xgb.rabit.finalize()
+
     return result
 
 
