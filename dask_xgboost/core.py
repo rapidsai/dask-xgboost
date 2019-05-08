@@ -103,7 +103,7 @@ def train_part(env, param, list_of_parts, dmatrix_kwargs=None, **kwargs):
         if dmatrix_kwargs is None:
             dmatrix_kwargs = {}
 
-    elif labels[0] is None and isinstance(data[0], gd):
+    elif labels[0] is None and isinstance(data[0], gd.DataFrame):
         data = concat(data)
         if dmatrix_kwargs is None:
             dmatrix_kwargs = {}
@@ -141,7 +141,7 @@ def _train(client, params, data, labels, dmatrix_kwargs={}, **kwargs):
         if isinstance(data[0], Delayed):
             for data_part in data:
                 if not isinstance(data_part, Delayed):
-                    raise AssertionError("note all data is delayed")
+                    raise AssertionError("not all data is delayed")
             data_parts = data
     else:
         data_parts = data.to_delayed()
