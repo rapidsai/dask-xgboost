@@ -1,6 +1,23 @@
 Dask-XGBoost
 ============
 
+Deprecation warning!
+--------------------
+
+*dask-xgboost is now deprecated*. As of release 1.0, XGBoost provides a
+native Dask API:
+https://xgboost.readthedocs.io/en/latest/tutorials/dask.html
+
+The native XGBoost API has all of the functionality of dask-xgboost,
+combined with an updated, clean API and much more extensive
+testing. All users are encouraged to switch to the native API. See
+also this blog post for an overview:
+https://medium.com/rapids-ai/a-new-official-dask-api-for-xgboost-e8b10f3d1eb7
+
+
+Overview
+--------
+
 Distributed training with XGBoost and Dask.distributed
 
 This repository enables you to perform distributed training with XGBoost on
